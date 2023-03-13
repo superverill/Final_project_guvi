@@ -1,0 +1,415 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+warnings.filterwarnings("ignore")
+
+df= pd.read_csv('train.csv')
+
+**EYEBALLING THE DATA**
+
+df.head(10)
+
+df.shape
+
+df.dtypes
+
+
+df['job'].value_counts()
+
+df['marital'].value_counts()
+
+df['education_qual'].value_counts()
+
+df['call_type'].value_counts()
+
+df['prev_outcome'].value_counts()
+
+sns.countplot(x=df.y,data=df)
+plt.xlabel("Tgt")
+plt.ylabel('count')
+plt.plot()
+
+**DATA CLEANING**
+
+df=df.drop_duplicates()
+
+df.shape
+
+df['job']=df['job'].replace('unknown',df['job'].mode()[0])
+
+df['job'].unique()
+
+df['education_qual']=df['education_qual'].replace('unknown',df['education_qual'].mode()[0])
+
+df['y']=df['y'].map({'yes':1,'no':0})
+
+df.describe()
+
+IQR=df['num_calls'].quantile(0.75)-df['num_calls'].quantile(0.25)
+ul=df['num_calls'].quantile(0.75)+(1.5*IQR)
+ll=df['num_calls'].quantile(0.25)-(1.5*IQR)
+df['num_calls']=df['num_calls'].clip(ul,ll)
+
+IQR=df['dur'].quantile(0.75)-df['dur'].quantile(0.25)
+ul=df['dur'].quantile(0.75)+(1.5*IQR)
+ll=df['dur'].quantile(0.25)-(1.5*IQR)
+df['dur']=df['dur'].clip(ul,ll)
+
+df.describe()
+
+df.dtypes
+
+**EXPLORATORY DATA ANALYSIS**
+
+data=pd.DataFrame(df.job.value_counts()).sort_values('job',ascending=False).reset_index()
+data.rename(columns={'index':'Job','job':'count'},inplace=True)
+bar=sns.barplot(x=data['Job'],y=data['count'],data=data)
+bar.tick_params(axis='x',rotation=90)
+
+(df.groupby('job')['y'].mean()*100).sort_values().plot(kind='barh',color='red')
+
+(df.groupby('marital')['y'].mean()*100).sort_values().plot(kind='barh',color='green')
+
+(df.groupby('education_qual')['y'].mean()*100).sort_values().plot(kind='barh',color='blue')
+
+(df.groupby('call_type')['y'].mean()*100).sort_values().plot(kind='barh',color='yellow')
+
+(df.groupby('prev_outcome')['y'].mean()*100).sort_values().plot(kind='barh',color='maroon')
+
+(df.groupby('mon')['y'].mean()*100).sort_values().plot(kind='barh',color='red')
+
+df.isnull().sum()
+
+**Data Encoding**
+
+df['job'] = df['job'].map({"blue-collar" : 0 , "entrepreneur" : 1 , "services" : 2 , "housemaid" : 3 , "technician" : 4 , "self-employed" : 5 , "admin." : 6 , "management" : 7 , "unemployed" : 8 , "retired" : 9 , "student" : 10})
+
+df['marital'] = df['marital'].map({"married" : 0 , "divorced" : 1 , "single" : 2 })
+df['education_qual'] = df['education_qual'].map({"primary" : 0 , "secondary" : 1 , "tertiary" : 2})
+df['call_type'] = df['call_type'].map({"unknown" : 0 , "telephone" : 1 , "cellular" : 2})
+df['prev_outcome'] = df['prev_outcome'].map({"unknown" : 0 , "failure" : 1 , "other" : 2,"success": 3})
+df['mon'] = df['mon'].map({"may" : 0 , "jul" : 1 , "jan" : 2 , "nov" : 3 , "jun" : 4 , "aug" : 5 , "feb" : 6 , "apr" : 7 , "oct" : 8 , "sep" : 9 , "dec" : 10,"mar":11})
+
+df.head()
+
+**Splitting the Data**
+
+col= df.columns
+x= df.loc[:,col[:-1]].values
+y= df.loc[:,col[-1]].values
+
+from sklearn.model_selection import train_test_split
+x_train,x_test,y_train,y_test=train_test_split(x,y,test_size=0.25)
+
+Since the data is unbalanced balancing using SMOTEEINN technique
+
+len(x_train), len(y_train)
+
+from imblearn.combine import SMOTEENN
+smt= SMOTEENN(sampling_strategy='all')
+x_smt, y_smt =smt.fit_resample(x_train,y_train)
+
+len(x_smt), len(y_smt)
+
+df_bal=pd.DataFrame(x_smt,columns= df.columns[:-1])
+df_bal['y']= y_smt
+
+len(df_bal[df_bal['y']==1])/len(df_bal)
+
+**Scaling the DataSet**
+
+from sklearn.preprocessing import StandardScaler
+scaler= StandardScaler()
+x_train_scaled = scaler.fit_transform(x_smt)
+x_test_scaled = scaler.fit_transform(x_test)
+
+**Logistic Regression Model**
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score
+ml= LogisticRegression()
+ml.fit(x_train_scaled, y_smt)
+res = roc_auc_score(y_test,ml.predict_proba(x_test_scaled)[:,-1])
+
+**K Nearest Neighbour Model**
+
+from sklearn.model_selection import cross_val_score
+from sklearn.neighbors import KNeighborsClassifier
+ml2 = KNeighborsClassifier()
+ml2.fit(x_train_scaled,y_smt)
+ml2.score(x_test_scaled,y_test)
+
+for i in [1,2,3,4,5,6,7,8,9,10,15,20,30]:
+  ml2 = KNeighborsClassifier(n_neighbors=i)
+  ml2.fit(x_train_scaled,y_smt)
+  print("K-Value",i, "Accuracy Score",ml2.score(x_test_scaled,y_test),"Cross_val_score:",np.mean(cross_val_score(ml2,x_train,y_train,cv=10)))
+
+ml2 = KNeighborsClassifier(n_neighbors=15)
+ml2.fit(x_train_scaled,y_smt)
+ml2.score(x_test_scaled,y_test)
+res2=roc_auc_score(y_test,ml2.predict_proba(x_test_scaled)[:,1])
+
+**Decision Tree Model**
+
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import accuracy_score
+
+
+
+for i in [1,2,3,4,5,6,7,8,9,10,15,20,30,40,50]:
+  dt = DecisionTreeClassifier(max_depth=i)
+  dt.fit(x_train_scaled,y_smt)  
+  print("Max_depth",i, "Accuracy Score",accuracy_score(y_test,dt.predict(x_test_scaled)),"Cross_val_score:",np.mean(cross_val_score(dt,x_train,y_train,cv=10)))
+
+dt = DecisionTreeClassifier(max_depth=4)
+dt.fit(x_train_scaled,y_smt)
+dt.score(x_test_scaled,y_test)
+res3= roc_auc_score(y_test,dt.predict_proba(x_test_scaled)[:,1])
+
+from sklearn.metrics import confusion_matrix
+confusion_matrix(y_test,dt.predict(x_test_scaled))
+
+**Random Forest Model**
+
+from sklearn.ensemble import RandomForestClassifier
+rf= RandomForestClassifier(n_estimators=100,max_depth= 8, max_features= 'sqrt')
+rf.fit(x_train_scaled,y_smt)
+
+res4= roc_auc_score(y_test, rf.predict(x_test_scaled))
+confusion_matrix(y_test,dt.predict(x_test_scaled))
+
+**XGBoostModel**
+
+import xgboost as xgb
+
+for i in [0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.1,0.15,0.2,0.25,0.3]:
+  xg= xgb.XGBClassifier(learining_rate= i ,n_estimators=10,verbosity=0)
+  xg.fit(x_train_scaled,y_smt)
+  xg.score(x_test_scaled,y_test)
+  print("Rate:",i,"Train Score:",xg.score(x_train_scaled,y_smt),"CV Score:",np.mean(cross_val_score(xg,x_train,y_train,cv=10)))
+
+xg = xgb.XGBClassifier(learining_rate =0.24, n_estimators=10,verbosity=0)
+xg.fit(x_train_scaled,y_smt)
+res5=roc_auc_score(y_test,xg.predict_proba(x_test_scaled)[:,1])
+
+xg.score(x_train_scaled,y_smt)
+
+confusion_matrix(y_test,xg.predict(x_test_scaled))
+
+**Ensemble learning Model** 
+
+
+
+from sklearn.ensemble import VotingClassifier
+from sklearn import tree
+m1=LogisticRegression()
+m2=tree.DecisionTreeClassifier()
+m3=KNeighborsClassifier()
+m4=xgb.XGBClassifier(learining_rate=0.75,n_estimators=100,verbosity=0)
+m5=RandomForestClassifier(n_estimators=100, max_depth=6,max_features="sqrt")
+m= VotingClassifier(estimators=[('lr',m1),('dt',m2),('knn',m3),('xgb',m4),('rf',m5)],voting="soft")
+
+m.fit(x_train_scaled,y_smt)
+y_pred = m.predict(x_test_scaled)
+res6=roc_auc_score(y_test,m.predict_proba(x_test_scaled)[:,1])
+
+pd.DataFrame({"Model":['Logistic Regression','KNN','Decision Tree','Random Forest','XG Boost','Voting Classifier'],"AUROC":[res,res2,res3,res4,res5,res6]})
+
+imp_ft = pd.DataFrame({'ft':col[:-1],'imp':xg.feature_importances_})
+imp_ft.sort_values('imp',ascending=False,inplace=True)
+imp_ft.iloc[0:5,0].values
+
+x_imp= df.loc[:,imp_ft.iloc[0:5,0]].values
+y= df.loc[:,col[-1]].values
+
+x_train,x_test,y_train,y_test =train_test_split(x_imp,y,test_size=0.25)
+
+x_smt_imp,y_smt =smt.fit_resample(x_train,y_train)
+
+df_bal_imp=pd.DataFrame(x_smt_imp,columns=imp_ft.iloc[0:5,0])
+df_bal_imp['y']=y_smt
+
+scaler=StandardScaler()
+x_train_scaled = scaler.fit_transform(x_smt_imp)
+x_test_imp_scaled=scaler.fit_transform(x_test)
+
+for i in [0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.1,0.5,0.75,1]:
+  xg = xgb.XGBClassifier(learning_rate= i ,n_estimators=10,verbosity=0)
+  xg.fit(x_train_scaled,y_smt)
+  xg.score(x_test_imp_scaled,y_test)
+  print("Rate:",i,"Score:",xg.score(x_train_scaled,y_smt),"CV:",np.mean(cross_val_score(xg, x_train,y_train,cv=10)))
+
+xg = xgb.XGBClassifier(learning_rate= 0.5 ,n_estimators=10,verbosity=0)
+xg.fit(x_train_scaled,y_smt)
+a =roc_auc_score(y_test,xg.predict_proba(x_test_imp_scaled)[:,1]) 
+a 
+
+from itertools import combinations
+comb_1 = list(combinations(col[:-1],1))
+comb_1[0]
+
+auc=[]
+for i in comb_1:
+  x=df.loc[:,i].values
+  y=df.loc[:,col[-1]].values
+  x_train, x_test, y_train, y_test = train_test_split(x,y,test_size = 0.25)
+  x_smt, y_smt =smt.fit_resample(x_train,y_train)
+  x_train_scaled =scaler.fit_transform(x_smt)
+  x_test_scaled =scaler.fit_transform(x_test)
+  xgg = xgb.XGBClassifier(learning_rate= 0.75,n_estimators=10,verbosity=0)
+  xgg.fit(x_train_scaled,y_smt)
+  g =roc_auc_score(y_test,xgg.predict_proba(x_test_scaled)[:,1])
+  auc.append(g)
+
+a= max(auc)
+
+comb_2=list(combinations(col[:-1],2))
+auc_2=[]
+for i in comb_2:
+  x=df.loc[:,i].values
+  y=df.loc[:,col[-1]].values
+  x_train, x_test, y_train, y_test = train_test_split(x,y,test_size = 0.25)
+  x_smt, y_smt =smt.fit_resample(x_train,y_train)
+  x_train_scaled =scaler.fit_transform(x_smt)
+  x_test_scaled =scaler.fit_transform(x_test)
+  xgg = xgb.XGBClassifier(learning_rate= 0.75,n_estimators=10,verbosity=0)
+  xgg.fit(x_train_scaled,y_smt)
+  g =roc_auc_score(y_test,xgg.predict_proba(x_test_scaled)[:,1])
+  auc_2.append(g)
+
+b = max(auc_2)
+
+comb_3=list(combinations(col[:-1],3))
+auc_3=[]
+for i in comb_3:
+  x=df.loc[:,i].values
+  y=df.loc[:,col[-1]].values
+  x_train, x_test, y_train, y_test = train_test_split(x,y,test_size = 0.25)
+  x_smt, y_smt =smt.fit_resample(x_train,y_train)
+  x_train_scaled =scaler.fit_transform(x_smt)
+  x_test_scaled =scaler.fit_transform(x_test)
+  xgg = xgb.XGBClassifier(learning_rate= 0.75,n_estimators=10,verbosity=0)
+  xgg.fit(x_train_scaled,y_smt)
+  g =roc_auc_score(y_test,xgg.predict_proba(x_test_scaled)[:,1])
+  auc_3.append(g)
+
+c=max(auc_3)
+
+comb_4=list(combinations(col[:-1],4))
+auc_4=[]
+for i in comb_4:
+  x=df.loc[:,i].values
+  y=df.loc[:,col[-1]].values
+  x_train, x_test, y_train, y_test = train_test_split(x,y,test_size = 0.25)
+  x_smt, y_smt =smt.fit_resample(x_train,y_train)
+  x_train_scaled =scaler.fit_transform(x_smt)
+  x_test_scaled =scaler.fit_transform(x_test)
+  xgg = xgb.XGBClassifier(learning_rate= 0.75,n_estimators=10,verbosity=0)
+  xgg.fit(x_train_scaled,y_smt)
+  g =roc_auc_score(y_test,xgg.predict_proba(x_test_scaled)[:,1])
+  auc_4.append(g)
+
+d=max(auc_4)
+
+comb_5=list(combinations(col[:-1],3))
+auc_5=[]
+for i in comb_5:
+  x=df.loc[:,i].values
+  y=df.loc[:,col[-1]].values
+  x_train, x_test, y_train, y_test = train_test_split(x,y,test_size = 0.25)
+  x_smt, y_smt =smt.fit_resample(x_train,y_train)
+  x_train_scaled =scaler.fit_transform(x_smt)
+  x_test_scaled =scaler.fit_transform(x_test)
+  xgg = xgb.XGBClassifier(learning_rate= 0.75,n_estimators=10,verbosity=0)
+  xgg.fit(x_train_scaled,y_smt)
+  g =roc_auc_score(y_test,xgg.predict_proba(x_test_scaled)[:,1])
+  auc_5.append(g)
+
+e=max(auc_5)
+
+comb_6=list(combinations(col[:-1],3))
+auc_6=[]
+for i in comb_6:
+  x=df.loc[:,i].values
+  y=df.loc[:,col[-1]].values
+  x_train, x_test, y_train, y_test = train_test_split(x,y,test_size = 0.25)
+  x_smt, y_smt =smt.fit_resample(x_train,y_train)
+  x_train_scaled =scaler.fit_transform(x_smt)
+  x_test_scaled =scaler.fit_transform(x_test)
+  xgg = xgb.XGBClassifier(learning_rate= 0.75,n_estimators=10,verbosity=0)
+  xgg.fit(x_train_scaled,y_smt)
+  g =roc_auc_score(y_test,xgg.predict_proba(x_test_scaled)[:,1])
+  auc_6.append(g)
+
+f=max(auc_6)
+
+comb_7=list(combinations(col[:-1],3))
+auc_7=[]
+for i in comb_7:
+  x=df.loc[:,i].values
+  y=df.loc[:,col[-1]].values
+  x_train, x_test, y_train, y_test = train_test_split(x,y,test_size = 0.25)
+  x_smt, y_smt =smt.fit_resample(x_train,y_train)
+  x_train_scaled =scaler.fit_transform(x_smt)
+  x_test_scaled =scaler.fit_transform(x_test)
+  xgg = xgb.XGBClassifier(learning_rate= 0.75,n_estimators=10,verbosity=0)
+  xgg.fit(x_train_scaled,y_smt)
+  g =roc_auc_score(y_test,xgg.predict_proba(x_test_scaled)[:,1])
+  auc_7.append(g)
+
+g=max(auc_7)
+
+comb_8=list(combinations(col[:-1],3))
+auc_8=[]
+for i in comb_8:
+  x=df.loc[:,i].values
+  y=df.loc[:,col[-1]].values
+  x_train, x_test, y_train, y_test = train_test_split(x,y,test_size = 0.25)
+  x_smt, y_smt =smt.fit_resample(x_train,y_train)
+  x_train_scaled =scaler.fit_transform(x_smt)
+  x_test_scaled =scaler.fit_transform(x_test)
+  xgg = xgb.XGBClassifier(learning_rate= 0.75,n_estimators=10,verbosity=0)
+  xgg.fit(x_train_scaled,y_smt)
+  g =roc_auc_score(y_test,xgg.predict_proba(x_test_scaled)[:,1])
+  auc_8.append(g)
+
+h= max(auc_8)
+
+comb_9=list(combinations(col[:-1],3))
+auc_9=[]
+for i in comb_9:
+  x=df.loc[:,i].values
+  y=df.loc[:,col[-1]].values
+  x_train, x_test, y_train, y_test = train_test_split(x,y,test_size = 0.25)
+  x_smt, y_smt =smt.fit_resample(x_train,y_train)
+  x_train_scaled =scaler.fit_transform(x_smt)
+  x_test_scaled =scaler.fit_transform(x_test)
+  xgg = xgb.XGBClassifier(learning_rate= 0.75,n_estimators=10,verbosity=0)
+  xgg.fit(x_train_scaled,y_smt)
+  g =roc_auc_score(y_test,xgg.predict_proba(x_test_scaled)[:,1])
+  auc_9.append(g)
+
+i= max(auc_9)
+
+comb_10=list(combinations(col[:-1],3))
+auc_10=[]
+for i in comb_10:
+  x=df.loc[:,i].values
+  y=df.loc[:,col[-1]].values
+  x_train, x_test, y_train, y_test = train_test_split(x,y,test_size = 0.25)
+  x_smt, y_smt =smt.fit_resample(x_train,y_train)
+  x_train_scaled =scaler.fit_transform(x_smt)
+  x_test_scaled =scaler.fit_transform(x_test)
+  xgg = xgb.XGBClassifier(learning_rate= 0.75,n_estimators=10,verbosity=0)
+  xgg.fit(x_train_scaled,y_smt)
+  g =roc_auc_score(y_test,xgg.predict_proba(x_test_scaled)[:,1])
+  auc_10.append(g)
+
+a,b,c,d,e,f,g,h,max(auc_9),max(auc_10)
+
+m=max(auc_9)
+i=auc_9.index(m)
+best_fit=comb_9[i]
+best_fit
